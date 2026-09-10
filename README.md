@@ -2,22 +2,32 @@
 
 Lecteur d'arbre généalogique en une seule page HTML, sans dépendance ni serveur.
 Recherche par nom, fiche individuelle, ascendance, descendance, calcul de lien de
-parenté, et export de l'ascendance en image PNG ou SVG.
+parenté, export de l'ascendance en image PNG ou SVG, et un mode édition qui écrit
+directement dans ce dépôt.
 
 ## Données
 
-La version publiée ne contient **que les noms, prénoms et dates de naissance**.
-Toutes les autres informations présentes dans l'export d'origine (décès, lieux,
-professions, notes, e-mails, adresses, sources) ont été retirées avant publication.
-Le jeu de données restreint se trouve dans `fullExport.public.ged`.
+`tree.ged` est le fichier de données, chargé par la page au démarrage. Il ne
+contient que **noms, prénoms, sexe, dates de naissance et liens familiaux**.
+Aucune autre information (décès, lieux, professions, notes, e-mails, adresses,
+sources) n'y figure.
 
-## Utilisation
+## Édition
 
-Ouvrir `index.html` dans un navigateur. L'arbre est intégré à la page ; rien
-n'est téléchargé et aucune donnée ne quitte le navigateur. Le bouton
-« Charger un fichier .ged » permet d'ouvrir un autre export GEDCOM à la place.
+Le bouton « Édition » de la page permet d'ajouter une personne, la relier à une
+autre (enfant, parent, conjoint·e), modifier ou supprimer. « Enregistrer sur
+GitHub » écrit `tree.ged` via l'API GitHub après saisie d'un jeton à droit
+d'écriture ; le jeton reste dans le navigateur. GitHub Pages redéploie ensuite
+le site en une minute environ.
+
+Chaque enregistrement est un commit : l'historique du dépôt garde toutes les
+versions du fichier.
+
+## Utilisation hors ligne
+
+Ouvert comme simple fichier local, `index.html` utilise une copie des données
+intégrée à la page (le mode édition GitHub n'a alors pas de cible).
 
 ## Publication
 
-Site statique : n'importe quel hébergement de fichiers convient. Sur GitHub Pages,
-activer Pages sur la branche `main`, dossier racine ; l'URL sert alors `index.html`.
+Site statique : GitHub Pages sur la branche `main`, dossier racine.

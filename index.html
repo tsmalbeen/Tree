@@ -248,6 +248,45 @@
   footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px 10px 8px}
   ::-webkit-scrollbar{width:11px;height:11px}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;border:3px solid transparent;background-clip:content-box}
+
+  /* ---------- Editor ---------- */
+  #dirtyDot{color:#e0a800;font-weight:700}
+  .modal-back{
+    position:fixed;inset:0;z-index:80;background:rgba(20,15,8,.5);
+    display:flex;align-items:flex-start;justify-content:center;padding:24px 14px;overflow:auto;
+  }
+  .modal{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    width:100%;max-width:520px;padding:0;overflow:hidden;
+  }
+  .modal header{
+    display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);
+  }
+  .modal header h2{margin:0;font-size:16px;font-weight:600;flex:1}
+  .modal .x{background:none;border:none;font-size:22px;line-height:1;color:var(--muted);cursor:pointer;padding:0 4px}
+  .modal .body{padding:16px;display:flex;flex-direction:column;gap:16px}
+  .modal .sect{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel-2)}
+  .modal .sect > h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+  .fld{display:flex;flex-direction:column;gap:4px;margin-bottom:9px}
+  .fld:last-child{margin-bottom:0}
+  .fld label{font-size:12px;color:var(--muted)}
+  .fld input,.fld select{
+    padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);width:100%;
+  }
+  .fld input:focus,.fld select:focus{outline:2px solid var(--accent);outline-offset:0}
+  .fld .row2{display:flex;gap:8px}
+  .fld .row2 > *{flex:1}
+  .modal .who{font-size:13px;color:var(--muted);margin-bottom:8px}
+  .modal .who b{color:var(--ink)}
+  .modal .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .modal .msg{font-size:12.5px;margin-top:8px;white-space:pre-wrap}
+  .modal .msg.ok{color:#2e7d32}
+  .modal .msg.err{color:#c62828}
+  .modal .danger{color:#c62828;border-color:#c62828}
+  .modal small.hint{color:var(--muted);font-size:11.5px;line-height:1.4;display:block;margin-top:6px}
+  @media (prefers-color-scheme:dark){
+    .modal .msg.ok{color:#7fd18b}.modal .msg.err{color:#f5a3a3}
+  }
 </style>
 </head>
 <body>
@@ -262,6 +301,7 @@
   <span class="grow"></span>
   <button class="btn" id="btnPhotos" title="Associer un dossier de photos exportées">Photos…</button>
   <button class="btn" id="btnReload">Charger un fichier .ged</button>
+  <button class="btn" id="btnEdit" title="Ajouter ou modifier des personnes">Édition<span id="dirtyDot" hidden> •</span></button>
 </header>
 
 <button id="chromeToggle" type="button" title="Afficher ou masquer la barre du haut" aria-label="Afficher ou masquer la barre du haut">≡</button>
@@ -70932,6 +70972,12 @@ const isPtr = v => typeof v==="string" && /^@[^@]+@$/.test(v);
 
 function parseGedcom(text){
   const records = tokenize(text);
+  return Object.assign({records}, interpretRecords(records));
+}
+function reinterpret(db){
+  Object.assign(db, interpretRecords(db.records));
+}
+function interpretRecords(records){
   const notes = new Map();
   for(const r of records) if(r.tag==="NOTE" && r.xref) notes.set(r.xref, assemble(r));
   function noteText(n){
@@ -70946,10 +70992,11 @@ function parseGedcom(text){
   }
 
   const EV = {BIRT:"Naissance", BAPM:"Baptême", CHR:"Baptême", DEAT:"Décès", BURI:"Inhumation", RESI:"Résidence", DIV:"Divorce"};
-  const indi = new Map(), fam = new Map(), rin = new Map();
+  const indi = new Map(), fam = new Map(), rin = new Map(), rawIndi = new Map(), rawFam = new Map();
 
   for(const r of records){
     if(r.tag==="INDI" && r.xref){
+      rawIndi.set(r.xref, r);
       const nameNode = child(r,"NAME");
       let given="", surname="";
       if(nameNode){
@@ -70995,6 +71042,7 @@ function parseGedcom(text){
       if(rinVal) rin.set(rinVal, r.xref);
     }
     else if(r.tag==="FAM" && r.xref){
+      rawFam.set(r.xref, r);
       const h=child(r,"HUSB"), w=child(r,"WIFE");
       const marrNode = child(r,"MARR");
       let marr=null;
@@ -71016,9 +71064,45 @@ function parseGedcom(text){
     }
   }
 
-  // Build reverse links: which family is a person a child of (already famc), spouse of (fams)
   const headNode = records.find(r=>r.tag==="HEAD");
-  return {indi, fam, rin, headNode};
+  return {indi, fam, rin, rawIndi, rawFam, headNode};
+}
+
+/* ---------- GEDCOM serialisation (round-trip from the raw record tree) ---------- */
+function serializeGedcom(records){
+  const out = [];
+  const emit = (node, depth)=>{
+    let line = depth + " ";
+    if(node.xref) line += node.xref + " " + node.tag;
+    else {
+      line += node.tag;
+      if(node.value != null && node.value !== ""){
+        const v = isPtr(node.value) ? node.value : String(node.value).replace(/@/g, "@@");
+        line += " " + v;
+      }
+    }
+    out.push(line);
+    for(const c of node.children) emit(c, depth + 1);
+  };
+  for(const r of records) emit(r, 0);
+  return out.join("\n") + "\n";
+}
+const gNode = (tag, value, children)=> ({level:0, tag, value:(value==null?null:String(value)), xref:null, children:children||[]});
+function gAddChild(parent, tag, value){ const n = gNode(tag, value); parent.children.push(n); return n; }
+function gRemoveChildren(parent, pred){ parent.children = parent.children.filter(c=>!pred(c)); }
+function nextXref(prefix){
+  let max = 0;
+  for(const r of DB.records){
+    if(!r.xref) continue;
+    const m = r.xref.match(new RegExp("^@"+prefix+"(\\d+)@$"));
+    if(m){ const n = +m[1]; if(n>max) max = n; }
+  }
+  return "@"+prefix+(max+1)+"@";
+}
+function insertRecord(rec){
+  const i = DB.records.findIndex(r=>r.tag==="TRLR");
+  if(i>=0) DB.records.splice(i, 0, rec);
+  else DB.records.push(rec);
 }
 
 /* ============================================================
@@ -71072,7 +71156,8 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<
 /* ============================================================
    3. App state
    ============================================================ */
-let DB = null;            // {indi, fam, rin, headNode}
+let DB = null;            // {records, indi, fam, rin, rawIndi, rawFam, headNode}
+const PUBLISHED_DATA = "tree.ged";   // build-public.js sets this to the data filename on the hosted site
 let PHOTOS = new Map();   // basename -> objectURL
 let HISTORY = [];         // navigation stack of ids
 let SECTION = "fiche";    // fiche | ascendance | descendance | parente
@@ -71385,6 +71470,8 @@ function render(){
   else if(SECTION==="ascendance") renderPedigree(view, p);
   else if(SECTION==="descendance") renderDescendants(view, p);
   else if(SECTION==="parente") renderRelationship(view, p);
+
+  if(editBack) renderEditModal();
 }
 
 function ageInfo(p){
@@ -71946,6 +72033,339 @@ function highlight(name, toks){
 $("#q").addEventListener("input", ()=>{ clearTimeout(searchT); searchT = setTimeout(runSearch, 120); });
 
 /* ============================================================
+   7b. Édition : ajout / modification de personnes, sauvegarde GitHub
+   ============================================================ */
+let DIRTY = false, EDIT_LOG = [];
+function markDirty(on){ DIRTY = on !== false; const d = $("#dirtyDot"); if(d) d.hidden = !DIRTY; }
+function curId(){ return HISTORY[HISTORY.length-1]; }
+
+const MON = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+function normBirth(s){
+  s = (s||"").trim();
+  if(!s) return "";
+  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{3,4})$/);
+  if(m){ const mo = MON[+m[2]-1]; if(mo) return (+m[1]) + " " + mo + " " + m[3]; }
+  m = s.match(/^(\d{1,2})[\/.\-](\d{3,4})$/);
+  if(m){ const mo = MON[+m[1]-1]; if(mo) return mo + " " + m[2]; }
+  return s;
+}
+
+function applyEdit(mutator, logLine){
+  mutator();
+  reinterpret(DB);
+  buildIndexes();
+  fillSidebar();
+  if(logLine) EDIT_LOG.push(logLine);
+  markDirty(true);
+  render();
+  if(editBack) renderEditModal();
+}
+
+/* ---- raw-tree model operations ---- */
+function rawIndiNode(id){ return DB.records.find(r=>r.xref===id && r.tag==="INDI"); }
+function rawFamNode(id){ return DB.records.find(r=>r.xref===id && r.tag==="FAM"); }
+function makeFam(){ const rec = gNode("FAM"); rec.xref = nextXref("F"); insertRecord(rec); return rec; }
+function makeIndi(f){
+  const rec = gNode("INDI"); rec.xref = nextXref("I");
+  const name = gNode("NAME", ((f.given||"") + " /" + (f.surname||"") + "/").trim());
+  if(f.given) name.children.push(gNode("GIVN", f.given));
+  if(f.surname) name.children.push(gNode("SURN", f.surname));
+  rec.children.push(name);
+  if(f.sex==="M" || f.sex==="F") rec.children.push(gNode("SEX", f.sex));
+  const b = normBirth(f.birth);
+  if(b){ const bn = gNode("BIRT"); bn.children.push(gNode("DATE", b)); rec.children.push(bn); }
+  insertRecord(rec);
+  return rec.xref;
+}
+function setSpouseInFam(fam, indiId){
+  const p = DB.indi.get(indiId);
+  const slot = (p && p.sex==="F") ? "WIFE" : "HUSB";
+  const other = slot==="HUSB" ? "WIFE" : "HUSB";
+  if(!child(fam, slot)) gAddChild(fam, slot, indiId);
+  else if(!child(fam, other)) gAddChild(fam, other, indiId);
+  else gAddChild(fam, slot, indiId);
+  const ind = rawIndiNode(indiId);
+  if(ind && !ind.children.some(c=>c.tag==="FAMS" && c.value===fam.xref)) gAddChild(ind, "FAMS", fam.xref);
+}
+function addChildToFam(fam, childId){
+  if(!fam.children.some(c=>c.tag==="CHIL" && c.value===childId)) gAddChild(fam, "CHIL", childId);
+  const ind = rawIndiNode(childId);
+  if(ind && !ind.children.some(c=>c.tag==="FAMC" && c.value===fam.xref)) gAddChild(ind, "FAMC", fam.xref);
+}
+function linkChildOf(parentId, childId){
+  const parent = DB.indi.get(parentId);
+  let fam = parent.fams[0] ? rawFamNode(parent.fams[0]) : null;
+  if(!fam){ fam = makeFam(); setSpouseInFam(fam, parentId); }
+  addChildToFam(fam, childId);
+}
+function linkParentOf(childId, parentId){
+  const ch = DB.indi.get(childId);
+  let fam = ch.famc[0] ? rawFamNode(ch.famc[0]) : null;
+  if(!fam){ fam = makeFam(); addChildToFam(fam, childId); }
+  setSpouseInFam(fam, parentId);
+}
+function linkSpouseOf(aId, bId){
+  const a = DB.indi.get(aId);
+  let fam = null;
+  for(const fid of a.fams){
+    const f = rawFamNode(fid); if(!f) continue;
+    if(!child(f,"HUSB") || !child(f,"WIFE")){ fam = f; break; }
+  }
+  if(!fam){ fam = makeFam(); setSpouseInFam(fam, aId); }
+  setSpouseInFam(fam, bId);
+}
+function editIndiFields(id, f){
+  const rec = rawIndiNode(id); if(!rec) return;
+  let name = child(rec,"NAME"); if(!name) name = gAddChild(rec,"NAME","");
+  name.value = ((f.given||"") + " /" + (f.surname||"") + "/").trim();
+  gRemoveChildren(name, c=>c.tag==="GIVN"||c.tag==="SURN");
+  if(f.surname) name.children.unshift(gNode("SURN", f.surname));
+  if(f.given) name.children.unshift(gNode("GIVN", f.given));
+  gRemoveChildren(rec, c=>c.tag==="SEX");
+  if(f.sex==="M" || f.sex==="F"){
+    const i = rec.children.indexOf(name);
+    rec.children.splice(i+1, 0, gNode("SEX", f.sex));
+  }
+  const b = normBirth(f.birth);
+  let birt = child(rec,"BIRT");
+  if(b){
+    if(!birt) birt = gAddChild(rec,"BIRT","");
+    gRemoveChildren(birt, c=>c.tag==="DATE");
+    birt.children.unshift(gNode("DATE", b));
+  } else if(birt){
+    gRemoveChildren(birt, c=>c.tag==="DATE");
+  }
+}
+function deleteIndi(id){
+  DB.records = DB.records.filter(r=>!(r.xref===id && r.tag==="INDI"));
+  for(const r of DB.records){
+    if(r.tag==="FAM") gRemoveChildren(r, c=>["HUSB","WIFE","CHIL"].indexOf(c.tag)>=0 && c.value===id);
+  }
+  const empties = new Set(DB.records.filter(r=>r.tag==="FAM" && !r.children.some(c=>["HUSB","WIFE","CHIL"].indexOf(c.tag)>=0)).map(r=>r.xref));
+  if(empties.size){
+    DB.records = DB.records.filter(r=>!(r.tag==="FAM" && empties.has(r.xref)));
+    for(const r of DB.records) if(r.tag==="INDI") gRemoveChildren(r, c=>(c.tag==="FAMS"||c.tag==="FAMC") && empties.has(c.value));
+  }
+}
+
+/* ---- GitHub storage ---- */
+const GH = {
+  get cfg(){ return LS.get("gh", {owner:"tsmalbeen", repo:"Tree", path:"tree.ged", branch:"main"}); },
+  set cfg(v){ LS.set("gh", v); },
+  get token(){ try{ return localStorage.getItem("gh.token") || ""; }catch(e){ return ""; } },
+  set token(v){ try{ v ? localStorage.setItem("gh.token", v) : localStorage.removeItem("gh.token"); }catch(e){} }
+};
+let GH_SHA = null;
+function b64EncodeUtf8(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin = ""; for(let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function b64DecodeUtf8(b64){
+  const bin = atob(String(b64).replace(/\s/g,""));
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+async function ghApi(path, opts){
+  return fetch("https://api.github.com"+path, Object.assign({
+    headers:{ "Authorization":"Bearer "+GH.token, "Accept":"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28" }
+  }, opts||{}));
+}
+async function ghGetFile(){
+  const c = GH.cfg;
+  const r = await ghApi("/repos/"+c.owner+"/"+c.repo+"/contents/"+c.path.split("/").map(encodeURIComponent).join("/")+"?ref="+encodeURIComponent(c.branch));
+  if(r.status===404) return {sha:null, text:null};
+  if(!r.ok) throw new Error("lecture "+r.status+" — "+(await r.text()).slice(0,160));
+  const j = await r.json();
+  return { sha:j.sha, text: b64DecodeUtf8(j.content) };
+}
+async function ghPutFile(text, message, sha){
+  const c = GH.cfg;
+  const r = await ghApi("/repos/"+c.owner+"/"+c.repo+"/contents/"+c.path.split("/").map(encodeURIComponent).join("/"), {
+    method:"PUT",
+    body: JSON.stringify({ message, content: b64EncodeUtf8(text), branch: c.branch, sha: sha || undefined })
+  });
+  if(!r.ok) throw new Error("écriture "+r.status+" — "+(await r.text()).slice(0,240));
+  return r.json();
+}
+async function saveToGitHub(btn, msg){
+  if(!GH.token){ msg.className = "msg err"; msg.textContent = "Renseignez d'abord un jeton GitHub."; return; }
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = "Enregistrement…";
+  msg.className = "msg"; msg.textContent = "";
+  try{
+    let sha = GH_SHA;
+    try{ const cur = await ghGetFile(); sha = cur.sha; }catch(e){}
+    const text = serializeGedcom(DB.records);
+    const changes = EDIT_LOG.length ? EDIT_LOG.slice(0,6).join(" ; ") : "modification";
+    const res = await ghPutFile(text, "Édition via la page : " + changes, sha);
+    GH_SHA = (res.content && res.content.sha) || null;
+    EDIT_LOG = [];
+    markDirty(false);
+    msg.className = "msg ok";
+    msg.textContent = "Enregistré sur GitHub. Le site public se met à jour dans une minute environ.";
+  }catch(e){
+    msg.className = "msg err";
+    msg.textContent = "Échec : " + e.message;
+  }finally{
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+async function testGitHub(btn, msg){
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = "…";
+  msg.className = "msg"; msg.textContent = "";
+  try{
+    const cur = await ghGetFile();
+    GH_SHA = cur.sha;
+    msg.className = "msg ok";
+    msg.textContent = cur.sha ? ("Connexion OK. Fichier trouvé (" + cur.sha.slice(0,7) + ").") : "Connexion OK. Le fichier sera créé au premier enregistrement.";
+  }catch(e){
+    msg.className = "msg err";
+    msg.textContent = "Échec : " + e.message;
+  }finally{
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+/* ---- editor modal ---- */
+let editBack = null;
+function openEditModal(){
+  if(!DB){ alert("Chargez d'abord un arbre."); return; }
+  if(editBack) return;
+  editBack = el("div","modal-back");
+  editBack.addEventListener("click", e=>{ if(e.target===editBack) closeEditModal(); });
+  const modal = el("div","modal");
+  modal.innerHTML = '<header><h2>Édition</h2><button class="x" title="Fermer">×</button></header><div class="body"></div>';
+  modal.querySelector(".x").onclick = closeEditModal;
+  editBack.appendChild(modal);
+  document.body.appendChild(editBack);
+  renderEditModal();
+}
+function closeEditModal(){ if(editBack){ editBack.remove(); editBack = null; } }
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeEditModal(); });
+
+function fld(label, node){
+  const w = el("div","fld");
+  w.appendChild(el("label",null,escapeHtml(label)));
+  w.appendChild(node);
+  return w;
+}
+function inp(value, ph){ const e = el("input"); e.type="text"; if(value!=null) e.value=value; if(ph) e.placeholder=ph; return e; }
+function sexSel(v){
+  const s = el("select");
+  [["","—"],["M","homme"],["F","femme"]].forEach(([val,lab])=>{ const o=el("option",null,lab); o.value=val; if(val===v)o.selected=true; s.appendChild(o); });
+  return s;
+}
+
+function renderEditModal(){
+  if(!editBack) return;
+  const body = editBack.querySelector(".body");
+  body.innerHTML = "";
+  const id = curId();
+  const p = DB.indi.get(id);
+
+  /* --- edit current person --- */
+  const s1 = el("div","sect");
+  s1.appendChild(el("h3",null,"Personne affichée"));
+  if(p){
+    s1.appendChild(el("div","who", "<b>"+escapeHtml(displayName(p))+"</b>"+(lifeYears(p)?" ("+lifeYears(p)+")":"")));
+    const g = inp(p.given), n = inp(p.surname), sx = sexSel(p.sex);
+    const be = birthEvent(p);
+    const bd = inp(be ? be.date : "", "ex : 12 JUN 1900 ou 1900");
+    const row = el("div"); row.className="fld"; row.innerHTML='<div class="row2"></div>';
+    row.querySelector(".row2").append(wrapMini("Prénom",g), wrapMini("Nom",n));
+    s1.appendChild(row);
+    s1.appendChild(fld("Sexe", sx));
+    s1.appendChild(fld("Naissance", bd));
+    const act = el("div","actions");
+    const bApply = el("button","btn primary","Appliquer");
+    bApply.onclick = ()=> applyEdit(
+      ()=> editIndiFields(id, {given:g.value.trim(), surname:n.value.trim(), sex:sx.value, birth:bd.value}),
+      "maj " + (g.value.trim()+" "+n.value.trim()).trim()
+    );
+    const bDel = el("button","btn danger","Supprimer");
+    bDel.onclick = ()=>{
+      if(!confirm("Supprimer « "+displayName(p)+" » ? Ses liens familiaux seront retirés.")) return;
+      const nm = displayName(p);
+      const fallback = (parentsOf(p)[0]||{}).id || (unionsOf(p)[0]||{}).spouseId || DB.indi.keys().next().value;
+      applyEdit(()=>{ deleteIndi(id); }, "suppr " + nm);
+      if(fallback && DB.indi.has(fallback)){ HISTORY = [fallback]; suppressHash = true; location.hash = "#"+fallback.replace(/^@|@$/g,""); render(); if(editBack) renderEditModal(); }
+    };
+    act.append(bApply, bDel);
+    s1.appendChild(act);
+  } else {
+    s1.appendChild(el("div","who","Aucune personne affichée."));
+  }
+  body.appendChild(s1);
+
+  /* --- add a person --- */
+  const s2 = el("div","sect");
+  s2.appendChild(el("h3",null,"Ajouter une personne"));
+  const ag = inp("", "Prénom"), an = inp("", "Nom"), asx = sexSel(""), abd = inp("", "ex : 3 MAR 1912 ou 1912");
+  const r2 = el("div"); r2.className="fld"; r2.innerHTML='<div class="row2"></div>';
+  r2.querySelector(".row2").append(wrapMini("Prénom",ag), wrapMini("Nom",an));
+  s2.appendChild(r2);
+  s2.appendChild(fld("Sexe", asx));
+  s2.appendChild(fld("Naissance", abd));
+  const rel = el("select");
+  [["","sans lien"],["child","enfant de la personne affichée"],["parent","parent de la personne affichée"],["spouse","conjoint·e de la personne affichée"]]
+    .forEach(([v,l])=>{ const o=el("option",null,l); o.value=v; rel.appendChild(o); });
+  if(p) s2.appendChild(fld("Lien", rel));
+  const bAdd = el("button","btn primary","Ajouter");
+  bAdd.onclick = ()=>{
+    if(!ag.value.trim() && !an.value.trim()){ alert("Indiquez au moins un prénom ou un nom."); return; }
+    const fields = {given:ag.value.trim(), surname:an.value.trim(), sex:asx.value, birth:abd.value};
+    const label = (fields.given+" "+fields.surname).trim();
+    applyEdit(()=>{
+      const nid = makeIndi(fields);
+      if(p && rel.value==="child") linkChildOf(id, nid);
+      else if(p && rel.value==="parent") linkParentOf(id, nid);
+      else if(p && rel.value==="spouse") linkSpouseOf(id, nid);
+    }, "ajout " + label + (p && rel.value ? (" ("+rel.options[rel.selectedIndex].text+")") : ""));
+    ag.value = an.value = abd.value = ""; asx.value = "";
+  };
+  s2.appendChild(el("div","actions")).appendChild(bAdd);
+  body.appendChild(s2);
+
+  /* --- GitHub --- */
+  const s3 = el("div","sect");
+  s3.appendChild(el("h3",null,"Enregistrer"));
+  const cfg = GH.cfg;
+  const det = el("details");
+  det.innerHTML = '<summary style="cursor:pointer;color:var(--muted);font-size:12.5px">Dépôt et jeton</summary>';
+  const oi = inp(cfg.owner,"propriétaire"), ri = inp(cfg.repo,"dépôt"), pi = inp(cfg.path,"chemin du fichier"), bi = inp(cfg.branch,"branche");
+  const ti = el("input"); ti.type="password"; ti.placeholder="jeton GitHub (droit d'écriture)"; ti.value = GH.token;
+  det.append(fld("Propriétaire", oi), fld("Dépôt", ri), fld("Fichier", pi), fld("Branche", bi), fld("Jeton", ti));
+  det.append(el("small","hint","Le jeton reste dans ce navigateur uniquement. Créez un jeton fine-grained limité au dépôt, permission Contenu : lecture et écriture. Révocable à tout moment sur GitHub."));
+  const saveCfg = ()=>{ GH.cfg = {owner:oi.value.trim(), repo:ri.value.trim(), path:pi.value.trim()||"tree.ged", branch:bi.value.trim()||"main"}; GH.token = ti.value.trim(); };
+  [oi,ri,pi,bi,ti].forEach(x=> x.addEventListener("change", saveCfg));
+  s3.appendChild(det);
+
+  const msg = el("div","msg");
+  const act3 = el("div","actions");
+  const bTest = el("button","btn","Tester la connexion");
+  bTest.onclick = ()=>{ saveCfg(); testGitHub(bTest, msg); };
+  const bSave = el("button","btn primary","Enregistrer sur GitHub");
+  bSave.onclick = ()=>{ saveCfg(); saveToGitHub(bSave, msg); };
+  const bDl = el("button","btn","Télécharger le .ged");
+  bDl.onclick = ()=> downloadBlob(new Blob([serializeGedcom(DB.records)], {type:"text/plain"}), (GH.cfg.path.split("/").pop()||"arbre.ged"));
+  act3.append(bTest, bSave, bDl);
+  s3.appendChild(act3);
+  s3.appendChild(msg);
+  if(DIRTY){ const w = el("small","hint"); w.textContent = "Modifications non enregistrées."; w.style.color = "#e0a800"; s3.appendChild(w); }
+  body.appendChild(s3);
+}
+function wrapMini(label, node){
+  const w = el("div","fld"); w.style.margin = "0";
+  w.appendChild(el("label",null,escapeHtml(label)));
+  w.appendChild(node);
+  return w;
+}
+
+$("#btnEdit").addEventListener("click", openEditModal);
+window.addEventListener("beforeunload", e=>{ if(DIRTY){ e.preventDefault(); e.returnValue = ""; } });
+
+/* ============================================================
    8. File handling
    ============================================================ */
 function handleFile(file){
@@ -72016,10 +72436,22 @@ photoInput.addEventListener("change", e=>{
 })();
 
 (async function boot(){
+  // 1. remote data file (published site only) — always the freshest copy after an edit
+  if(PUBLISHED_DATA){
+    try{
+      const res = await fetch(PUBLISHED_DATA + "?_=" + Date.now(), {cache:"no-store"});
+      if(res.ok){
+        const txt = await res.text();
+        if(/(^|\n)0\s+HEAD/.test(txt.slice(0,400))){ loadText(txt, PUBLISHED_DATA); return; }
+      }
+    }catch(e){ /* offline / stale — fall through to embedded copy */ }
+  }
+
+  // 2. data embedded in the page
   const embed = document.getElementById("gedData");
   const embedText = embed ? embed.textContent.trim() : "";
   if(embedText.length > 40 && /(^|\n)0\s+HEAD/.test(embedText.slice(0,200))){
-    loadText(embedText, "fullExport.ged");
+    loadText(embedText, "arbre.ged");
     return;
   }
   const cached = await cacheLoad();
