@@ -21,7 +21,7 @@
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
-    background:var(--bg); color:var(--ink); font:15px/1.55 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    background:var(--bg); color:var(--ink); font:15px/1.55 Arial,"Helvetica Neue",Helvetica,"Segoe UI",system-ui,-apple-system,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
   button,input,select{font:inherit;color:inherit}
@@ -71715,7 +71715,7 @@ function buildPedigreeSVG(rootId, maxGen){
   const W = Math.ceil(L.width + M.left + M.right);
   const H = Math.ceil(L.height + M.top + M.bottom);
   const root = DB.indi.get(rootId);
-  let s = '<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="Georgia,\'Times New Roman\',serif">';
+  let s = '<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="Arial,Helvetica,sans-serif">';
   s += '<rect width="'+W+'" height="'+H+'" fill="#ffffff"/>';
   s += '<text x="'+M.left+'" y="34" font-size="21" font-weight="bold" fill="#2b2620">Ascendance de '+svgEsc(displayName(root))+'</text>';
   s += '<text x="'+M.left+'" y="56" font-size="13" fill="#8a8072">'+L.maxGenUsed+' génération'+(L.maxGenUsed>1?'s':'')+' — '+svgEsc(new Date().toLocaleDateString("fr"))+'</text>';
