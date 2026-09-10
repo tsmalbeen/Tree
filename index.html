@@ -71351,6 +71351,21 @@ function render(){
   view.appendChild(tabs);
 
   if(SECTION==="ascendance"){
+    const ob = el("div","exportbar");
+    const bOld = el("button","btn","Aller au plus ancien ancêtre");
+    const oInfo = el("span","muted");
+    const oa = oldestAncestor(p.id);
+    if(oa){
+      const op = DB.indi.get(oa.id);
+      oInfo.textContent = displayName(op) + "  ·  " + oa.year + "  ·  " + oa.gen + " génération" + (oa.gen>1?"s":"") + " plus haut";
+      bOld.onclick = ()=>{ SECTION="fiche"; goto(oa.id); };
+    } else {
+      bOld.disabled = true;
+      oInfo.textContent = "aucune date de naissance connue chez les ascendants";
+    }
+    ob.appendChild(bOld); ob.appendChild(oInfo);
+    view.appendChild(ob);
+
     const xb = el("div","exportbar");
     const gi = el("input"); gi.type="number"; gi.min="2"; gi.max="25"; gi.className="gen-in";
     gi.value = LS.get("expGen", Math.max(6, LS.get("pedGen",4)));
@@ -71556,6 +71571,26 @@ function countAncestors(id, maxGen, seen){
     if(a && DB.indi.has(a) && !seen.has(a)){ seen.add(a); n += 1 + countAncestors(a, maxGen-1, seen); }
   }
   return n;
+}
+/* deepest-back ancestor of `rootId` that has a usable birth year (root excluded) */
+function oldestAncestor(rootId){
+  const seen = new Set();
+  let best = null;
+  (function rec(id, gen){
+    if(seen.has(id)) return;
+    seen.add(id);
+    const p = DB.indi.get(id); if(!p) return;
+    if(gen > 0){
+      const b = birthEvent(p);
+      const y = b ? firstYear(b.date) : null;
+      if(y != null && y >= 200 && (!best || y < best.year || (y === best.year && gen > best.gen)))
+        best = {id, year:y, gen};
+    }
+    const {father, mother} = fatherMother(p);
+    if(father) rec(father, gen+1);
+    if(mother) rec(mother, gen+1);
+  })(rootId, 0);
+  return best;
 }
 
 /* ---------- Pedigree image export (SVG / PNG) ---------- */
