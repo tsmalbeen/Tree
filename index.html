@@ -72189,6 +72189,14 @@ async function ghPutFile(text, message, sha){
   if(!r.ok) throw new Error("écriture "+r.status+" — "+(await r.text()).slice(0,240));
   return r.json();
 }
+function ghHint(e){
+  const m = String((e && e.message) || e || "");
+  if(/401|Bad credentials/i.test(m)) return "\nGitHub ne reconnaît pas ce jeton. Recopiez-le en entier depuis GitHub (il commence par github_pat_ ou ghp_), sans espace ni retour à la ligne, et vérifiez qu'il est encore actif.";
+  if(/\b403\b/.test(m)) return "\nJeton accepté mais sans droit d'écriture ici. Il faut la permission Contents : Read and write sur le dépôt tsmalbeen/Tree.";
+  if(/\b404\b/.test(m)) return "\nDépôt, branche ou chemin introuvable, ou le jeton n'a pas accès à ce dépôt.";
+  if(/\b409\b/.test(m)) return "\nConflit de version : rechargez la page puis refaites la modification.";
+  return "";
+}
 async function saveToGitHub(btn, msg){
   if(!GH.token){ msg.className = "msg err"; msg.textContent = "Renseignez d'abord un jeton GitHub."; return; }
   const orig = btn.textContent; btn.disabled = true; btn.textContent = "Enregistrement…";
@@ -72206,7 +72214,7 @@ async function saveToGitHub(btn, msg){
     msg.textContent = "Enregistré sur GitHub. Le site public se met à jour dans une minute environ.";
   }catch(e){
     msg.className = "msg err";
-    msg.textContent = "Échec : " + e.message;
+    msg.textContent = "Échec : " + e.message + ghHint(e);
   }finally{
     btn.disabled = false; btn.textContent = orig;
   }
@@ -72221,7 +72229,7 @@ async function testGitHub(btn, msg){
     msg.textContent = cur.sha ? ("Connexion OK. Fichier trouvé (" + cur.sha.slice(0,7) + ").") : "Connexion OK. Le fichier sera créé au premier enregistrement.";
   }catch(e){
     msg.className = "msg err";
-    msg.textContent = "Échec : " + e.message;
+    msg.textContent = "Échec : " + e.message + ghHint(e);
   }finally{
     btn.disabled = false; btn.textContent = orig;
   }
@@ -72337,8 +72345,10 @@ function renderEditModal(){
   const ti = el("input"); ti.type="password"; ti.placeholder="jeton GitHub (droit d'écriture)"; ti.value = GH.token;
   det.append(fld("Propriétaire", oi), fld("Dépôt", ri), fld("Fichier", pi), fld("Branche", bi), fld("Jeton", ti));
   det.append(el("small","hint","Le jeton reste dans ce navigateur uniquement. Créez un jeton fine-grained limité au dépôt, permission Contenu : lecture et écriture. Révocable à tout moment sur GitHub."));
-  const saveCfg = ()=>{ GH.cfg = {owner:oi.value.trim(), repo:ri.value.trim(), path:pi.value.trim()||"tree.ged", branch:bi.value.trim()||"main"}; GH.token = ti.value.trim(); };
-  [oi,ri,pi,bi,ti].forEach(x=> x.addEventListener("change", saveCfg));
+  const saveCfg = ()=>{ GH.cfg = {owner:oi.value.trim(), repo:ri.value.trim(), path:pi.value.trim()||"tree.ged", branch:bi.value.trim()||"main"}; GH.token = ti.value.replace(/\s+/g,""); };
+  [oi,ri,pi,bi].forEach(x=> x.addEventListener("change", saveCfg));
+  ti.addEventListener("input", saveCfg);
+  ti.addEventListener("change", saveCfg);
   s3.appendChild(det);
 
   const msg = el("div","msg");
