@@ -31,7 +31,7 @@
   /* ---------- Layout ---------- */
   header.top{
     display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-    padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);
+    padding:10px 46px 10px 16px;background:var(--panel);border-bottom:1px solid var(--line);
     position:sticky;top:0;z-index:20;
   }
   header.top h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px;white-space:nowrap}
@@ -46,6 +46,18 @@
   .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.45;cursor:default}
+
+  #chromeToggle{
+    position:fixed;top:6px;right:6px;z-index:60;width:30px;height:30px;padding:0;
+    border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--muted);
+    font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;opacity:.5;box-shadow:var(--shadow);transition:opacity .12s;
+  }
+  #chromeToggle:hover{opacity:1}
+  body.lean header.top{display:none}
+  body.lean aside.side{top:0;max-height:100vh}
+  body.lean main{min-height:100vh}
+  body.lean #chromeToggle{opacity:.85;background:var(--accent);color:#fff;border-color:var(--accent)}
 
   main{display:grid;grid-template-columns:320px 1fr;gap:0;min-height:calc(100vh - 56px)}
   @media (max-width:860px){
@@ -252,6 +264,8 @@
   <button class="btn" id="btnReload">Charger un fichier .ged</button>
 </header>
 
+<button id="chromeToggle" type="button" title="Afficher ou masquer la barre du haut" aria-label="Afficher ou masquer la barre du haut">≡</button>
+
 <main>
   <aside class="side" id="side" hidden>
     <div class="search-wrap">
@@ -260,11 +274,13 @@
     </div>
     <div class="results" id="results"></div>
 
-    <h3>Le tour du propriétaire</h3>
-    <div class="stat"><span>Personnes</span><b id="sPeople">–</b></div>
-    <div class="stat"><span>Familles</span><b id="sFam">–</b></div>
-    <div class="stat"><span>Noms de famille</span><b id="sSurn">–</b></div>
-    <div class="stat"><span>Période couverte</span><b id="sSpan">–</b></div>
+    <details class="side-extra" id="ownerBox" open>
+      <summary>Le tour du propriétaire</summary>
+      <div class="stat"><span>Personnes</span><b id="sPeople">–</b></div>
+      <div class="stat"><span>Familles</span><b id="sFam">–</b></div>
+      <div class="stat"><span>Noms de famille</span><b id="sSurn">–</b></div>
+      <div class="stat"><span>Période couverte</span><b id="sSpan">–</b></div>
+    </details>
 
     <details class="side-extra" id="sideExtra" open>
       <summary>Noms les plus fréquents</summary>
@@ -71938,15 +71954,30 @@ photoInput.addEventListener("change", e=>{
 /* ============================================================
    9. Boot: embedded data, then cache
    ============================================================ */
-/* collapse the surname list on small screens, expand on wide */
+/* collapsible side sections + hideable top bar */
 (function(){
-  const sx = document.getElementById("sideExtra");
-  if(!sx) return;
+  const boxes = [].slice.call(document.querySelectorAll(".side-extra"));
   const mq = window.matchMedia("(max-width:860px)");
-  const apply = ()=>{ sx.open = !mq.matches; };
-  apply();
-  if(mq.addEventListener) mq.addEventListener("change", apply);
-  else if(mq.addListener) mq.addListener(apply);
+  const applyBoxes = ()=>{ boxes.forEach(b=>{ b.open = !mq.matches; }); };
+  applyBoxes();
+  if(mq.addEventListener) mq.addEventListener("change", applyBoxes);
+  else if(mq.addListener) mq.addListener(applyBoxes);
+
+  const toggle = document.getElementById("chromeToggle");
+  if(toggle){
+    const setLean = (on)=>{
+      document.body.classList.toggle("lean", on);
+      toggle.setAttribute("aria-pressed", on ? "true" : "false");
+      toggle.title = on ? "Réafficher la barre du haut" : "Masquer la barre du haut";
+      if(on) boxes.forEach(b=>{ b.open = false; });
+    };
+    setLean(LS.get("lean", false));
+    toggle.addEventListener("click", ()=>{
+      const on = !document.body.classList.contains("lean");
+      LS.set("lean", on);
+      setLean(on);
+    });
+  }
 })();
 
 (async function boot(){
