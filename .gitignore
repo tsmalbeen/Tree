@@ -1,0 +1,10 @@
+# Données privées — NE JAMAIS publier
+fullExport.ged
+arbre.html
+*.bak
+arbre.nodata.html
+
+# divers
+node_modules/
+.DS_Store
+Thumbs.db
