@@ -50,7 +50,9 @@
   main{display:grid;grid-template-columns:320px 1fr;gap:0;min-height:calc(100vh - 56px)}
   @media (max-width:860px){
     main{grid-template-columns:1fr}
-    aside.side{border-right:none;border-bottom:1px solid var(--line);max-height:none}
+    aside.side{border-right:none;border-bottom:1px solid var(--line);max-height:none;position:static}
+    .side .results{max-height:44vh;overflow:auto}
+    .side-extra .cloud{max-height:34vh;overflow:auto;-webkit-overflow-scrolling:touch}
   }
 
   aside.side{
@@ -73,6 +75,14 @@
   .res .meta{font-size:12.5px;color:var(--muted)}
   .res mark{background:var(--accent-soft);color:inherit;border-radius:3px;padding:0 1px}
   .side h3{font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:20px 0 8px}
+  .side-extra{margin-top:20px}
+  .side-extra>summary{
+    font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:0 0 8px;
+    cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;user-select:none;-webkit-user-select:none;
+  }
+  .side-extra>summary::-webkit-details-marker{display:none}
+  .side-extra>summary::before{content:"▸";font-size:9px;transition:transform .15s}
+  .side-extra[open]>summary::before{transform:rotate(90deg)}
   .cloud{display:flex;flex-wrap:wrap;gap:5px 9px;line-height:1.2}
   .cloud a{color:var(--ink)}
   .cloud a:hover{color:var(--accent)}
@@ -256,8 +266,10 @@
     <div class="stat"><span>Noms de famille</span><b id="sSurn">–</b></div>
     <div class="stat"><span>Période couverte</span><b id="sSpan">–</b></div>
 
-    <h3>Noms les plus fréquents</h3>
-    <div class="cloud" id="cloud"></div>
+    <details class="side-extra" id="sideExtra" open>
+      <summary>Noms les plus fréquents</summary>
+      <div class="cloud" id="cloud"></div>
+    </details>
   </aside>
 
   <section class="content" id="content">
@@ -71867,7 +71879,7 @@ function runSearch(){
   all.slice(0,60).forEach(x=>{
     const r = el("div","res");
     r.innerHTML = '<span class="nm">'+highlight(x.name, toks)+'</span>' + (x.years?'<span class="meta">'+x.years+'</span>':'');
-    r.onclick = ()=>{ SECTION="fiche"; goto(x.id); if(window.innerWidth<=860) window.scrollTo({top:0,behavior:"smooth"}); };
+    r.onclick = ()=>{ SECTION="fiche"; goto(x.id); if(window.matchMedia("(max-width:860px)").matches){ const c=$("#content"); if(c) c.scrollIntoView({behavior:"smooth",block:"start"}); } };
     box.appendChild(r);
   });
 }
@@ -71926,6 +71938,17 @@ photoInput.addEventListener("change", e=>{
 /* ============================================================
    9. Boot: embedded data, then cache
    ============================================================ */
+/* collapse the surname list on small screens, expand on wide */
+(function(){
+  const sx = document.getElementById("sideExtra");
+  if(!sx) return;
+  const mq = window.matchMedia("(max-width:860px)");
+  const apply = ()=>{ sx.open = !mq.matches; };
+  apply();
+  if(mq.addEventListener) mq.addEventListener("change", apply);
+  else if(mq.addListener) mq.addListener(apply);
+})();
+
 (async function boot(){
   const embed = document.getElementById("gedData");
   const embedText = embed ? embed.textContent.trim() : "";
