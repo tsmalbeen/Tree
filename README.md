@@ -8,9 +8,11 @@ directement dans ce dépôt.
 ## Données
 
 `tree.ged` est le fichier de données, chargé par la page au démarrage. Il ne
-contient que **noms, prénoms, sexe, dates de naissance et liens familiaux**.
-Aucune autre information (décès, lieux, professions, notes, e-mails, adresses,
-sources) n'y figure.
+contient que **noms, prénoms, sexe, dates de naissance et de décès, et liens
+familiaux**. Aucune autre information (lieux, professions, notes, e-mails,
+adresses, sources) n'y figure. Les dates de décès sont incluses : elles ne
+concernent que des personnes déjà décédées et ne posent pas de problème de
+confidentialité pour les vivants.
 
 ## Édition
 
